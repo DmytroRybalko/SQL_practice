@@ -1,0 +1,53 @@
+---
+title: "SQL practice problem"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(DBI)
+library(odbc)
+library(RSQLite)
+```
+
+# SQL practice
+
+Here I'll try to experiment with database via rmarkdown. The reference book is "sql practice problems - vasilik sylvia moestl".  
+The DB is sqlite.  
+The schema:  
+![](https://raw.githubusercontent.com/cjlee/northwind/master/images/Northwind.png)  
+
+### Step 1. Connect to Northwind.sqlite
+
+```{r}
+con <- dbConnect(RSQLite::SQLite(), "db/Northwind.sqlite")
+```
+
+### Step 2. Tables overview
+```{r}
+dbListTables(con)
+```
+
+### Step 3. Particular table overview
+```{r}
+dbListFields(con, "Category")
+```
+
+### Step 4. Read particular table
+```{r}
+dbReadTable(con, "Category")
+```
+
+### Step 5. Make sql query
+
+```{sql, connection=con}
+SELECT * FROM 'Customer'
+```
+
+# SQL References
+
+### Q:How to count number of rows
+```{sql, connection=con}
+SELECT COUNT(*) FROM 'Customer'
+```
