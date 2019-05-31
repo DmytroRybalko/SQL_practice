@@ -1,0 +1,258 @@
+---
+title: 'SQL: Introductary Problems'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(RSQLite)
+con <- dbConnect(RSQLite::SQLite(), "db/Northwind.sqlite")
+knitr::opts_chunk$set(echo = TRUE, connection = "con")
+```
+
+## R Markdown  
+Here I'll work with part 1 of "sql practice problems" book
+
+## Connect to DB and overview tables
+```{r }
+dbListTables(con)
+```
+
+### Q1: Which shippers do we have?  
+
+We have a table called Shippers. Return all the fields from all the shippers
+```{sql, connection=con}
+SELECT * FROM 'Shipper'
+```
+
+### Q:How to count number of rows
+```{sql, connection=con}
+SELECT COUNT(*) FROM 'Customer'
+```
+
+### Q2: Select certain fields from table
+In the Categories table, selecting all the fields using this SQL
+```{sql, connection=con}
+SELECT * FROM 'Category'
+```
+
+... we only want 2 columns CategoryName and Description
+```{sql, connection=con}
+SELECT CategoryName, Description FROM 'Category'
+```
+
+### Q3: We’d like to see just the FirstName, LastName, and HireDate of all the employees with the Title of Sales Representative  
+
+Overvies data
+```{sql, connection=con}
+SELECT * FROM 'Employee'
+```
+
+Answer the question
+```{sql, connection=con}
+SELECT FirstName, HireDate
+FROM 'Employee'
+WHERE Title = 'Sales Representative'
+```
+### Q4: Sales Representatives in the United States  
+
+Now we’d like to see the same columns as above, but only for those employees that both have the title of Sales Representative, and also are in the United States.  
+```{sql, connection=con}
+SELECT FirstName, HireDate
+FROM 'Employee'
+WHERE Title = 'Sales Representative' AND Country = 'USA'
+```
+
+### Q5: Orders placed by specific EmployeeID  
+
+Order table overview
+```{sql}
+SELECT * FROM 'Order'
+```
+
+Show all the orders placed by a specific employee The EmployeeID for this Employee (Steven Buchanan) is 5.
+```{sql}
+SELECT Id AS 'OrderID', OrderDate FROM 'Order' WHERE EmployeeId = 5
+```
+
+### Q6: Suppliers and ContactTitles
+
+```{sql}
+SELECT * FROM 'Supplier'
+```
+
+In the Suppliers table, show the SupplierID, ContactName, and ContactTitle for those Suppliers whose ContactTitle is not Marketing Manager
+```{sql}
+SELECT ID AS SupplierID, ContactName, ContactTitle
+FROM 'Supplier' 
+WHERE ContactTitle != 'Marketing Manager'
+```
+
+### Q7: Products with “queso” in ProductName
+Overview Product table:
+```{sql}
+SELECT * FROM 'Product'
+```
+
+In the **Product** table, we’d like to see the **ProductID** and **ProductName** for those products where the **ProductName** includes the string “queso”
+```{sql}
+SELECT Id AS ProductID, ProductName
+FROM Product
+WHERE ProductName LIKE "%queso%"
+```
+### Q8: Orders shipping to France or Belgium
+
+Looking at the **Order** table
+```{sql}
+SELECT * FROM 'Order'
+```
+
+Looking at the **Order** table, there’s a field called **ShipCountry**. Write a query that shows the **OrderID**, **CustomerID**, and **ShipCountry** for the orders where the **ShipCountry** is either France or Belgium.
+```{sql}
+SELECT Id AS OrderID, CustomerId, ShipCountry
+FROM 'Order'
+WHERE ShipCountry IN ('France', 'Belgium')
+```
+
+### Q9: Orders shipping to any country in Latin America  
+
+Now, instead of just wanting to return all the orders from France of Belgium, we want to show all the orders from any Latin American country
+```{sql}
+SELECT Id AS OrderID, CustomerId, ShipCountry
+FROM 'Order'
+WHERE ShipCountry IN ('Brazil', 'Mexico', 'Argentina', 'Venezuela')
+```
+
+### Q10: Employees, in order of age  
+
+Look into **Employee** table
+```{sql}
+SELECT * FROM 'Employee'
+```
+
+For all the employees in the **Employee** table, show the **FirstName**, **LastName**, **Title**, and **BirthDate**. Order the results by **BirthDate**, so we have the oldest employees first.
+```{sql}
+SELECT FirstName, LastName, Title, BirthDate
+FROM 'Employee' 
+ORDER BY BirthDate
+```
+
+### Q12: Employees full name
+
+Show the **FirstName** and **LastName** columns from the **Employees** table, and then create a new column called FullName, showing FirstName and LastName joined together in one column, with a space in-between
+```{sql}
+SELECT FirstName, LastName, FirstName || ' ' || LastName AS FullName
+FROM 'Employee'
+```
+
+### Q13: OrderDetails amount per line item  
+
+In the **OrderDetails** table, we have the fields **UnitPrice** and **Quantity**
+```{sql}
+SELECT * FROM 'OrderDetail'
+```
+
+Create a new field, **TotalPrice**, that multiplies these two together. We’ll ignore the Discount field for now.  
+In addition, show the **OrderID**, **ProductID**, **UnitPrice**, and **Quantity**. Order by **OrderID** and **ProductID**.
+```{sql}
+SELECT OrderID, ProductID, UnitPrice, Quantity, UnitPrice*Quantity AS TotalPrice
+FROM 'OrderDetail'
+ORDER BY OrderId, ProductID
+```
+
+### Q14: How many customers?
+
+How many customers do we have in the Customers table?
+```{sql}
+SELECT * FROM 'Customer'
+```
+
+Show one value only, and don’t rely on getting the recordcount at the end of a resultset.
+```{sql}
+SELECT COUNT(*) AS 'Number of customers' FROM 'Customer'
+```
+
+### Q15: When was the first order?
+
+Overview **Order** table
+```{sql}
+SELECT * FROM 'Order'
+```
+
+Show the date of the first order ever made in the **Order** table
+```{sql}
+SELECT OrderDate AS 'First order date'
+FROM 'Order'
+ORDER BY OrderDate ASC
+LIMIT 1
+```
+
+### Q16: Countries where there are customers  
+
+Show a list of countries ...
+```{sql}
+SELECT * FROM 'Customer'
+```
+
+... where the Northwind company has customers
+```{sql}
+SELECT Country FROM 'Customer' GROUP BY Country
+```
+
+### Q17: Contact titles for customers
+
+Show a list of all the different values in the **Customer** table for **ContactTitle**. Also include a count for each **ContactTitle**
+```{sql}
+SELECT ContactTitle, COUNT(ContactTitle) AS 'CountTitle'
+FROM 'Customer'
+GROUP BY ContactTitle
+ORDER BY CountTitle DESC
+```
+
+### Q18: Products with associated supplier names
+
+We’d like to show, for each product, the associated Supplier. 
+```{sql}
+SELECT * FROM 'Product'
+```
+**Supplier** table overview
+```{sql}
+SELECT * FROM 'Supplier'
+```
+
+Show the **ProductID**, **ProductName**, and the **CompanyName** of the Supplier. Sort by **ProductID**.  
+```{sql}
+SELECT Product.Id, ProductName, CompanyName
+FROM 'Product'
+JOIN 'Supplier' ON Product.SupplierId = Supplier.Id 
+```
+
+### Q19: Orders and the Shipper that was used
+
+We’d like to show a list of the Orders that were made, including the Shipper that was used.
+```{sql}
+SELECT * FROM 'Orders'
+```
+Overview Shipper table:
+```{sql}
+SELECT * FROM 'Shipper'
+```
+
+Show the OrderID, OrderDate (date only), and CompanyName of the Shipper, and sort by OrderID.
+```{sql}
+SELECT `Order.Id`, OrderDate, CompanyName
+FROM 'Order'
+JOIN 'Shipper' ON `Order.ShipVia` = Shipper.Id
+```
+
+Have some problem with table Order's name :( Let's temporary rename **Order** table into **Orders** table.  
+The command is: ALTER TABLE 'Order' RENAME TO 'Orders'  
+I've used for this [sqllite simulator](https://sqliteonline.com/)  
+  
+In order to not show all the orders (there’s more than 800), show only those rows with an OrderID of less than 10300.
+```{sql}
+SELECT Orders.Id, OrderDate, CompanyName
+FROM 'Orders'
+JOIN 'Shipper' ON Orders.ShipVia = Shipper.Id
+WHERE Orders.ID < 10300
+```
+
