@@ -1,0 +1,128 @@
+---
+title: 'SQL Practice: Intermediate problems'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(RSQLite)
+con <- dbConnect(RSQLite::SQLite(), "db/Northwind.sqlite")
+knitr::opts_chunk$set(echo = TRUE, connection = "con")
+```
+
+## R Markdown  
+Here I'll work with part 1 of "sql practice problems" book
+
+## Connect to DB and overview tables
+```{r }
+dbListTables(con)
+```
+
+### Q20: Categories, and the total products in each category
+
+**Product** table overview:
+```{sql}
+SELECT * FROM 'Product'
+```
+
+For this problem, we’d like to see the total number of products in each category. Sort the results by the total number of products, in descending order
+```{sql}
+SELECT CategoryId, COUNT(CategoryId) AS 'CategoryNo'
+FROM 'Product'
+GROUP BY CategoryId
+ORDER BY CategoryNo DESC
+```
+Join **Category** table
+```{sql}
+SELECT Category.CategoryName, COUNT(Product.CategoryId) AS 'TotalProducts'
+FROM 'Product'
+JOIN 'Category' ON Product.CategoryId = Category.Id
+GROUP BY CategoryName
+ORDER BY TotalProducts DESC 
+```
+
+### Q21: Total customers per country/city
+
+Overvies **Customer** table
+```{sql}
+SELECT Id, Country, City FROM 'Customer'
+```
+
+In the **Customer** table, show the total number of customers per Country and City.
+```{sql}
+SELECT Country, City, COUNT(*) AS 'TotalCustomer'
+FROM 'Customer' 
+GROUP BY Country, City
+ORDER BY TotalCustomer DESC
+```
+
+### Q22: Products that need reordering  
+
+What products do we have in our inventory that should be reordered?
+```{sql}
+SELECT * FROM 'Product'
+```
+For now, just use the fields **UnitsInStock** and **ReorderLevel**, where UnitsInStock is less than the ReorderLevel, ignoring the fields UnitsOnOrder and Discontinued. Order the results by ProductID.
+```{sql}
+SELECT Id, UnitsInStock, ReorderLevel
+FROM 'Product'
+WHERE UnitsInStock < ReorderLevel
+ORDER BY Id
+```
+
+### Q23: Products that need reordering, continued
+
+Now we need to incorporate these fields — UnitsInStock, UnitsOnOrder, ReorderLevel, Discontinued — into our calculation. We’ll define “products that need reordering” with the following:  
+- UnitsInStock plus UnitsOnOrder are less than or equal to ReorderLevel
+- The Discontinued flag is false (0)
+```{sql}
+SELECT Id, ProductName, UnitsInStock, UnitsOnOrder, ReorderLevel, Discontinued
+FROM 'Product'
+WHERE (UnitsInStock + UnitsOnOrder) <= ReorderLevel AND Discontinued = 0
+```
+
+### Q24: Customer list by region  
+
+Overview **Customer** table: 
+```{sql}
+SELECT * FROM 'Customer'
+```
+
+A salesperson for Northwind is going on a business trip to visit customers, and would like to see a list of all customers, sorted by region, alphabetically. 
+```{sql}
+SELECT Id, CompanyName, Region
+FROM 'Customer' 
+ORDER BY Region ASC
+```
+
+However, he wants the customers with no region (null in the Region field) to be at the end, instead of at the top, where you’d normally find the null values.  
+Within the same region, companies should be sorted by **CustomerID**.
+```{sql}
+SELECT Id, CompanyName, Region
+FROM 'Customer' 
+ORDER BY
+  CASE WHEN Region IS NULL THEN 1 ELSE 0 END,
+Region, Id ASC
+```
+### Q25: High freight charges  
+Some of the countries we ship to have very high freight charges. We'd like to investigate some more shipping options for our customers, to be
+able to offer them lower freight charges.
+```{sql}
+SELECT Id, OrderDate, Freight, ShipCountry FROM 'Orders'
+```
+
+Return the three ship countries with the highest average freight overall, in descending order by average freight.
+```{sql}
+SELECT ShipCountry, AVG(Freight) AS 'AverageFreight'
+FROM 'Orders'
+GROUP BY ShipCountry
+ORDER BY AverageFreight DESC
+LIMIT(3)
+```
+
+
+
+
+
+
+
+
