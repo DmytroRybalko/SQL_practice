@@ -5,15 +5,22 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(RSQLite)
-con <- dbConnect(RSQLite::SQLite(), "db/Northwind.sqlite")
-knitr::opts_chunk$set(echo = TRUE, connection = "con")
+con <- dbConnect(RSQLite::SQLite(), "db/Northwind_large.sqlite")
+knitr::opts_chunk$set(echo = TRUE, connection = "con", max.print = NA)
+```
+
+# IMPORTANT!! Rename the 'Order' table into 'Orders'
+
+```{sql}
+--ALTER TABLE 'Order' RENAME TO 'Orders'
 ```
 
 ## R Markdown  
 Here I'll work with part 1 of "sql practice problems" book
 
+
 ## Connect to DB and overview tables
-```{r }
+```{r}
 dbListTables(con)
 ```
 
@@ -74,6 +81,7 @@ ORDER BY Id
 Now we need to incorporate these fields — UnitsInStock, UnitsOnOrder, ReorderLevel, Discontinued — into our calculation. We’ll define “products that need reordering” with the following:  
 - UnitsInStock plus UnitsOnOrder are less than or equal to ReorderLevel
 - The Discontinued flag is false (0)
+
 ```{sql}
 SELECT Id, ProductName, UnitsInStock, UnitsOnOrder, ReorderLevel, Discontinued
 FROM 'Product'
@@ -119,10 +127,188 @@ ORDER BY AverageFreight DESC
 LIMIT(3)
 ```
 
+### Q26: High freight charges - 2015
 
+Let's overview years in **Orders** table
+```{sql}
+SELECT strftime('%Y', OrderDate) AS 'OrderYear', count(OrderDate)
+FROM 'Orders'
+GROUP BY OrderYear
+```
 
+Now, instead of using all the orders we have, we only want to see orders from the year 2015
+```{sql}
+SELECT ShipCountry, AVG(Freight) AS 'AverageFreight'
+FROM 'Orders'
+WHERE strftime('%Y', OrderDate) = '2015'
+GROUP BY ShipCountry
+ORDER BY AverageFreight DESC
+--LIMIT(3)
+```
 
+### Q27: High freight charges with between  
 
+```{sql}
+SELECT ShipCountry, AVG(Freight) AS 'AverageFreight'
+FROM 'Orders'
+WHERE OrderDate BETWEEN '2015-01-01' AND '2015-12-31'
+GROUP BY ShipCountry
+ORDER BY AverageFreight DESC
+--LIMIT(3)
+```
 
+All orders for 12-31-2015
+```{sql}
+SELECT Id, ShipCountry, Freight, OrderDate --strftime('%Y-%m-%d-%H-%M-%S', OrderDate)
+FROM 'Orders' 
+WHERE strftime('%Y-%m-%d', OrderDate) = '2015-12-31'
+```
 
+How many orders France has in 2015:
+```{sql}
+SELECT ShipCountry, Freight, OrderDate--strftime('%Y-%m-%d', OrderDate)
+FROM 'Orders' 
+WHERE strftime('%Y', OrderDate) = '2015' AND ShipCountry = 'France'
+ORDER BY strftime('%Y-%m-%d', OrderDate) DESC
+```
+
+### Q28: High freight charges - last year  
+
+We're continuing to work on high freight charges. We now want to get the three ship countries with the highest average freight charges.
+```{sql}
+SELECT ShipCountry, AVG(Freight) AS 'AverageFreight'
+FROM 'Orders'
+GROUP BY ShipCountry
+ORDER BY AverageFreight DESC
+LIMIT(3)
+```
+
+But instead of filtering for a particular year, we want to use the last 12 months of order data, using as the end date the last OrderDate in Orders. 
+```{sql}
+
+```
+
+### Q29: Inventory list
+
+We're doing inventory, and need to show information like the below, for all orders. Sort by OrderID and Product ID.  
+We want to get next columns: EmployeeID, LastName, OrderID, ProductName, Quantity.  
+```{sql}
+SELECT * FROM 'Orders'
+```
+  
+EmployeeID and LastName we get from **Employee** table:
+```{sql}
+SELECT * FROM 'Employee'
+```
+Next, OrderId and Quantity we get from **OrderDetail** table:
+```{sql}
+SELECT * FROM 'OrderDetail'
+```
+And finally, ProductName we get from **Product**
+```{sql}
+SELECT * FROM 'Product'
+```
+
+JOIN 'Category' ON Product.CategoryId = Category.Id
+Step 1. Join **OrderDetails** table with Quantity to **Orders**
+```{sql}
+SELECT Orders.Id, Orders.EmployeeId, OrderDetail.Quantity
+FROM 'Orders'
+JOIN 'OrderDetail' ON Orders.Id = OrderDetail.OrderId
+```
+Step 2. Join **OrderDetails** table with Quantity to **Orders**
+```{sql}
+SELECT Orders.Id, Orders.EmployeeId, OrderDetail.Quantity, Employee.LastName, Product.ProductName
+FROM 'Orders'
+JOIN 'OrderDetail' ON Orders.Id = OrderDetail.OrderId
+JOIN 'Employee' ON Orders.EmployeeId = Employee.Id
+JOIN 'Product' ON OrderDetail.ProductId = Product.Id
+ORDER BY Orders.Id, Product.Id
+```
+
+### Q29: Customers with no orders  
+
+There are some customers who have never actually placed an order. Show these customers
+
+First, look into **Customer** table
+```{sql}
+SELECT * FROM 'Customer'
+```
+
+Second, overview **Orders** table:
+```{sql}
+SELECT * FROM 'Orders'
+```
+Let's make left join
+```{sql}
+SELECT Customer.Id AS Customer_CustomersId, Orders.CustomerId AS Orders_CustomerId
+FROM 'Customer'
+LEFT JOIN 'Orders' ON Orders.CustomerId = Customer.Id
+```
+
+This is a good start. It shows all records from the Customers table, and the matching records from the Orders table. However, we only want those records where the CustomerID in Orders is null. You still need a filter.  
+Answer from book:
+```{sql}
+SELECT Customer.Id AS Customer_CustomersId, Orders.CustomerId AS Orders_CustomerId
+FROM 'Customer'
+LEFT JOIN 'Orders' ON Orders.CustomerId = Customer.Id
+WHERE Customer.Id IS NULL
+```
+Check answer from book:
+```{sql}
+SELECT CustomerId
+FROM 'Orders'
+GROUP BY CustomerId
+```
+So, we have 95 unique rows in **Order** table vs 91 in **Customer**. Let's find these 4 customers  
+
+My answer:
+```{sql}
+SELECT Customer.Id AS Customer_CustomersId, Orders.CustomerId AS Orders_CustomerId
+FROM 'Orders'
+LEFT JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE Customer.Id IS NULL
+GROUP BY Orders_CustomerId
+```
+
+```{sql}
+SELECT Customer.Id AS Customer_CustomersId, Orders.CustomerId AS Orders_CustomerId
+FROM 'Orders'
+LEFT JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE Customer.Id IS NULL
+--GROUP BY Orders_CustomerId
+```
+
+### Q31: Customers with no orders for EmployeeID 4
+
+One employee (Margaret Peacock, EmployeeID 4) has placed the most orders...
+Check it
+```{sql}
+SELECT EmployeeId, COUNT(EmployeeId) AS 'NumberOfOrdred'
+FROM 'Orders'
+GROUP BY EmployeeId
+ORDER BY NumberOfOrdred DESC
+```
+
+... However, there are some customers who've never placed an order with her. Show only those customers who have never placed an order with her.  
+Step 1. filter orders with EmployeeId = 4:
+```{sql}
+SELECT * FROM 'Orders'
+WHERE EmployeeId = 4
+```
+
+```{sql}
+SELECT Customer.Id, Orders.CustomerID
+FROM 'Customer'
+LEFT JOIN 'Orders' ON Customer.Id = Orders.CustomerId AND Orders.EmployeeId = 4
+GROUP BY Customer.Id
+--WHERE Orders.CustomerId IS NULL 
+```
+
+```{sql}
+SELECT Customer.Id, Orders.CustomerID
+FROM 'Customer'
+LEFT JOIN 'Orders' ON Customer.Id = Orders.CustomerId AND Orders.EmployeeId = 4
+WHERE Orders.CustomerId IS NULL 
+```
 
