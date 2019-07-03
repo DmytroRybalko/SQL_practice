@@ -51,3 +51,15 @@ SELECT * FROM 'Customer'
 ```{sql, connection=con}
 SELECT COUNT(*) FROM 'Customer'
 ```
+
+### Q: How ot save sql output result into R object?
+
+```{sql, connection=con, output.var = "customer"}
+SELECT * FROM 'Customer'
+```
+
+Overview R object:
+```{r}
+customer
+```
+

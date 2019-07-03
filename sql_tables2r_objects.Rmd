@@ -1,0 +1,68 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+# Here is we convert sql tables to r-objects
+
+```{r setup, include=FALSE}
+library(RSQLite)
+library(tidyverse)
+library(lubridate)
+
+sqllarge <- dbConnect(RSQLite::SQLite(), "db/Northwind_large.sqlite")
+knitr::opts_chunk$set(echo = TRUE, connection = "sqllarge")
+```
+
+## Connect to DB and overview tables
+```{r}
+dbListTables(sqllarge)
+```
+
+## Convert sql-tables to R-objects
+
+R-object customers:
+```{sql, output.var = 'customers'}
+SELECT * FROM 'Customer'  
+```
+View and save r-object to file
+```{r}
+customers
+#save(customers, file = 'db/customers_table.Rdata')
+```
+R-object order_details:
+```{sql, output.var = 'order_details'}
+SELECT * FROM 'OrderDetail'
+```
+View and save r-object to file:
+```{r}
+order_details
+#save(order_details, file = 'db/order_details_table.Rdata')
+```
+R-object orders:
+```{sql, output.var = 'orders'}
+SELECT * FROM 'Orders'
+```
+View and save r-object to file:
+```{r}
+orders
+```
+First, transform OrderDate columb
+```{r}
+orders$OrderDate[c(1, 7500)]
+```
+So, we have problem: different format to dates. Let's correct it:
+```{r}
+orders$OrderDate[c(1, 7500)] %>% 
+  ymd_hms(truncated = 3)
+```
+Now let's try to convert dates from orders dataframe:
+```{r}
+orders$OrderDate <- ymd_hms(orders$OrderDate, truncated = 3)
+class(orders$OrderDate)
+```
+Save the dataframe with corrected date's type
+```{r, eval=FALSE}
+save(orders, file = 'db/orders_table.Rdata')
+```
+
