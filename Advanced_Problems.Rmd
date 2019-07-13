@@ -1,0 +1,213 @@
+---
+title: 'SQL Practice: Advanced problems'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(RSQLite)
+library(tidyverse)
+library(lubridate)
+
+
+#con <- dbConnect(RSQLite::SQLite(), "db/Northwind_large.sqlite")
+#min_db <- dbConnect(RSQLite::SQLite(), "db/Northwind.sqlite")
+con <- dbConnect(RSQLite::SQLite(), "db/edit_Northwind.sqlite")
+
+knitr::opts_chunk$set(echo = TRUE, connection = "con")
+```
+
+## Connect to DB and overview tables
+```{r}
+dbListTables(con)
+```
+
+### Q32: High-value customers  
+
+We want to send all of our high-value customers a special VIP gift. We're defining high-value customers as those who've made at least 1 order with a total value (not including the discount) equal to $10,000 or more. We only want to consider orders made in the year 2016.
+
+Look into **OrderDetail** table
+```{sql}
+SELECT * FROM 'OrderDetail'
+```
+What is the length of **OrderDetails**?
+```{sql}
+SELECT COUNT(*) AS 'Number Of Orders'
+FROM 'OrderDetail'
+```
+
+Look into **Orders** table
+```{sql}
+SELECT * FROM 'Orders'
+```
+
+Look into **Customer** table
+```{sql}
+SELECT * FROM 'Customer'
+```
+
+Step 1. Show order details for order No 10248
+```{sql}
+SELECT *
+FROM 'OrderDetail'
+WHERE OrderId = 10248
+```
+
+Step 2. Count total value (UnitPrice*Quantity) for order No 10248
+```{sql}
+SELECT OrderId, SUM(UnitPrice*Quantity) AS 'TotalValue'
+FROM 'OrderDetail'
+WHERE OrderId = 10248
+```
+Test results:  14\*12+9.8\*10+34.8*5 = 440  
+  
+Step 3. Count total value for orders:
+```{sql}
+SELECT OrderId, SUM(UnitPrice*Quantity) AS 'TotalValue'
+FROM 'OrderDetail'
+--WHERE OrderId IN (10248, 10250)
+GROUP BY OrderId
+```
+
+### Now let's solve our problem in tidyverse manere:)  
+  
+Let's loads R object with sql-tables:  
+```{r}
+load("db/small_customer_table.Rdata")
+load("db/small_order_details_table.Rdata")
+load("db/small_orders_table.Rdata")
+```
+
+See orders table:
+```{r}
+small_orders
+```
+
+Next, let's see number of orders by years
+```{r}
+small_orders %>% 
+  count(Year = year(OrderDate))
+```
+See order_details table:
+```{r}
+small_order_details
+```
+See customers table:
+```{r}
+small_customer
+```
+
+Repeat our task: We want to send all of our high-value customers a special VIP gift. We're defining high-value customers as those who've made at least 1 order with a total value (not including the discount) equal to $10,000 or more. We only want to consider orders made in the year 2016.  
+  
+Next, view total orders for order No 10248:
+```{r}
+inner_join(select(small_order_details, 1:5),
+           select(small_orders, Id, CustomerId, OrderDate) %>% filter(., Id == 10248),
+           by = c("OrderId" = "Id"))
+```
+Join customer's name:
+```{r}
+inner_join(select(small_order_details, 1:5),
+           select(small_orders, Id, CustomerId, OrderDate) %>% filter(Id %in% c(10248, 10252)),
+           by = c("OrderId" = "Id")) %>% 
+  inner_join(select(small_customer, Id, CompanyName), by = c("CustomerId" = "Id"))
+```
+Count Total Value:
+```{r}
+inner_join(select(small_order_details, 1:5),
+           select(small_orders, Id, CustomerId, OrderDate) %>% filter(Id %in% c(10248, 10252)),
+           by = c("OrderId" = "Id")) %>% 
+  inner_join(select(small_customer, Id, CompanyName), by = c("CustomerId" = "Id")) %>% 
+  group_by(CustomerId) %>% 
+  summarise(TotalValue = sum(UnitPrice * Quantity))
+```
+Final desision:
+```{r}
+inner_join(select(small_order_details, 1:5),
+           select(small_orders, Id, CustomerId, OrderDate) %>% filter(year(OrderDate) == 2016),
+           by = c("OrderId" = "Id")) %>% 
+  inner_join(select(small_customer, Id, CompanyName), by = c("CustomerId" = "Id")) %>% 
+  group_by(CustomerId, OrderId) %>% #CompanyName
+  summarise(TotalValue = sum(UnitPrice * Quantity)) %>% 
+  filter(TotalValue > 10000) %>% 
+  arrange(desc(TotalValue))
+```
+My decision for SQL:
+```{sql}
+SELECT Orders.CustomerId, Customer.CompanyName, OrderDetail.OrderId, SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalValue'
+FROM 'OrderDetail'
+JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE strftime('%Y', Orders.OrderDate) = '2016'
+GROUP BY CustomerId, OrderId
+HAVING SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 10000
+ORDER BY TotalValue DESC
+```
+
+### Q33: High-value customers - total orders  
+  
+The manager has changed his mind. Instead of requiring that customers have at least one individual orders totaling $10,000 or more, he wants to
+define high-value customers as those who have orders totaling $15,000 or more in 2016. How would you change the answer to the problem above?
+```{sql}
+SELECT Orders.CustomerId, Customer.CompanyName, OrderDetail.OrderId, SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalValue'
+FROM 'OrderDetail'
+JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE strftime('%Y', Orders.OrderDate) = '2016'
+GROUP BY CustomerId
+HAVING SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 15000
+ORDER BY TotalValue DESC
+```
+
+### Q34: High-value customers - with discount  
+  
+Change the above query to use the discount when calculating high-value customers. Order by the total amount which includes the discount. 
+```{sql}
+SELECT Orders.CustomerId, Customer.CompanyName, OrderDetail.OrderId,
+       SUM(OrderDetail.UnitPrice*OrderDetail.Quantity*(1 - OrderDetail.Discount)) AS 'TotalValueWithDiscount'
+FROM 'OrderDetail'
+JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE strftime('%Y', Orders.OrderDate) = '2016'
+GROUP BY CustomerId
+HAVING SUM(OrderDetail.UnitPrice*OrderDetail.Quantity*(1 - OrderDetail.Discount)) > 10000
+ORDER BY TotalValueWithDiscount DESC
+```
+
+### Q35: Month-end orders
+
+At the end of the month, salespeople are likely to try much harder to get orders, to meet their month-end quotas. Show all orders made on the last day of the month. Order by EmployeeID and OrderID.  
+  
+First, show Orders table:
+```{sql}
+SELECT * FROM 'Orders'
+```
+Final answer:
+```{sql}
+SELECT EmployeeId, Id, OrderDate
+FROM 'Orders'
+WHERE OrderDate = DATE(OrderDate, 'start of month', '+1 month', '-1 day')
+ORDER BY EmployeeId, Id
+```
+
+### Q36: Orders with many line items  
+
+**Task:** Show the 10 orders with the most line items, in order of total line items.  
+  
+Show OrderDetails table
+```{sql}
+SELECT * FROM 'OrderDetail'
+```
+Show Orders table
+```{sql}
+SELECT * FROM 'Orders'
+```
+Final answer:
+```{sql}
+SELECT Orders.Id, COUNT(*) AS 'TotalOrderDetail'
+FROM 'Orders'
+LEFT JOIN 'OrderDetail' ON OrderDetail.OrderId = Orders.Id
+GROUP BY OrderDetail.OrderId
+ORDER BY COUNT(OrderDetail.OrderId) DESC, Orders.Id DESC
+LIMIT 10
+```
+

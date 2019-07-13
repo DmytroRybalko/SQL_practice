@@ -60,6 +60,12 @@ Version=0.6.19
 Source=CRAN
 Hash=d3365737e889d39995e21d40a2814dd8
 
+[R/Package/dplyr]
+Package=dplyr
+Version=0.8.2
+Source=CRAN
+Hash=d19b3ea25bfc348420cab83674918c28
+
 [R/Package/hms]
 Package=hms
 Version=0.4.2
@@ -84,6 +90,12 @@ Version=1.1.6
 Source=CRAN
 Hash=1e6e19cbd9e7b2fe85e25cd4838025fe
 
+[R/Package/pillar]
+Package=pillar
+Version=1.4.2
+Source=CRAN
+Hash=357f493b2c613f4433a48e56ca3a9bd7
+
 [R/Package/pkgconfig]
 Package=pkgconfig
 Version=2.0.2
@@ -107,4 +119,10 @@ Package=rlang
 Version=0.3.4
 Source=CRAN
 Hash=b652896c0ee4bf8e5c75ea002558453b
+
+[R/Package/tibble]
+Package=tibble
+Version=2.1.3
+Source=CRAN
+Hash=f2a5724d0c06d6a9c0b66081de3f2133
 

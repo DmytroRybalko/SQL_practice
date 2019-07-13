@@ -11,7 +11,9 @@ library(tidyverse)
 library(lubridate)
 
 sqllarge <- dbConnect(RSQLite::SQLite(), "db/Northwind_large.sqlite")
-knitr::opts_chunk$set(echo = TRUE, connection = "sqllarge")
+sqlsmall <- dbConnect(RSQLite::SQLite(), "db/edit_Northwind.sqlite")
+
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Connect to DB and overview tables
@@ -21,8 +23,8 @@ dbListTables(sqllarge)
 
 ## Convert sql-tables to R-objects
 
-R-object customers:
-```{sql, output.var = 'customers'}
+### Customers table - Large db  
+```{sql, connection = 'sqllarge', output.var = 'customers'}
 SELECT * FROM 'Customer'  
 ```
 View and save r-object to file
@@ -30,8 +32,21 @@ View and save r-object to file
 customers
 #save(customers, file = 'db/customers_table.Rdata')
 ```
+
+### Customers table - Small db  
+
+```{sql, connection = 'sqlsmall', output.var = 'small_customer'}
+SELECT * FROM 'Customer'  
+```
+View and save r-object to file
+```{r}
+small_customer
+#save(small_customer, file = 'db/small_customer_table.Rdata')
+```
+### OrderDetail table - Large db  
+  
 R-object order_details:
-```{sql, output.var = 'order_details'}
+```{sql, connection = 'sqllarge', output.var = 'order_details'}
 SELECT * FROM 'OrderDetail'
 ```
 View and save r-object to file:
@@ -39,8 +54,22 @@ View and save r-object to file:
 order_details
 #save(order_details, file = 'db/order_details_table.Rdata')
 ```
+
+### OrderDetail table - Small db  
+  
+R-object order_details:
+```{sql, connection = 'sqlsmall', output.var = 'small_order_details'}
+SELECT * FROM 'OrderDetail'
+```
+View and save r-object to file:
+```{r}
+small_order_details
+#save(small_order_details, file = 'db/small_order_details_table.Rdata')
+```
+### Orders table - Large db  
+
 R-object orders:
-```{sql, output.var = 'orders'}
+```{sql, connection = 'sqllarge', output.var = 'orders'}
 SELECT * FROM 'Orders'
 ```
 View and save r-object to file:
@@ -63,6 +92,42 @@ class(orders$OrderDate)
 ```
 Save the dataframe with corrected date's type
 ```{r, eval=FALSE}
-save(orders, file = 'db/orders_table.Rdata')
+#save(orders, file = 'db/orders_table.Rdata')
 ```
+
+### Orders table - Small db  
+
+R-object orders:
+```{sql, connection = 'sqlsmall', output.var = 'small_orders'}
+SELECT * FROM 'Orders'
+--strftime('%Y', OrderDate) = '2015'
+```
+View and save r-object to file:
+```{r}
+small_orders
+#save(small_orders, file = 'db/small_orders_table.Rdata')
+```
+
+## Difference questions  
+
+### Compare OrderDate column in two Orders tables from large and small dbs:  
+```{r}
+left_join(small_orders %>% 
+            select('sId' = Id, 'sOrderDate' = OrderDate),
+          orders %>% 
+            select(Id, OrderDate),
+          by = c('sId' = 'Id')) %>% 
+  arrange(OrderDate)
+```
+What about years:
+```{r}
+# Run previous chunk!!!
+count(.Last.value, 'Year' = year(OrderDate))
+```
+Edit OrderDate table in small db with next replaces:
+1996 -> 2014
+1997 -> 2015
+1998 -> 2016
+
+DONE in edit_Northwind.sql table!!! 
 

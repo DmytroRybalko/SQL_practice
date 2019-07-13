@@ -24,9 +24,19 @@ The schema:
 con <- dbConnect(RSQLite::SQLite(), "db/Northwind.sqlite")
 ```
 
+#### Connect to Northwind_small.sqlite
+```{r}
+small_db <- dbConnect(RSQLite::SQLite(), "db/Northwind_small.sqlite")
+```
+
+### Connect to Northwind_small.sqlite
+```{r}
+large_db <- dbConnect(RSQLite::SQLite(), "db/Northwind_large.sqlite")
+```
+
 ### Step 2. Tables overview
 ```{r}
-dbListTables(con)
+dbListTables(small_db)
 ```
 
 ### Step 3. Particular table overview
@@ -63,3 +73,118 @@ Overview R object:
 customer
 ```
 
+### Compare dbs: Which years are in Orders.OrderDate:
+1) Northwind.sqlite
+```{sql, connection = small_db}
+SELECT strftime('%Y', OrderDate) AS 'Year', COUNT(*) AS '#OfYears'
+FROM 'Orders'
+GROUP BY strftime('%Y', OrderDate)
+```
+2) Northwind_small.sqlite
+```{sql, connection = con}
+SELECT strftime('%Y', OrderDate) AS 'Year', COUNT(*) AS '#OfYears'
+FROM 'Orders'
+GROUP BY strftime('%Y', OrderDate)
+```
+3) Northwind_large.sqlite
+```{sql, connection = large_db}
+SELECT strftime('%Y', OrderDate) AS 'Year', COUNT(*) AS '#OfYears'
+FROM 'Orders'
+GROUP BY strftime('%Y', OrderDate)
+```
+
+### Q: How to create new table as modified existed one
+
+Step 1. Overview **Orders** tabel:
+```{sql, connection = small_db}
+SELECT * FROM 'Orders'
+--WHERE strftime('%Y', OrderDate) = '1998'
+```
+
+Step 2. Select one row from one year:
+```{sql, connection = con}
+SELECT *
+FROM 'Orders'
+WHERE Id IN (10248, 10409, 10817)
+```
+Step 3: select simple date and replace the year 
+```{sql, connection = con}
+SELECT DATE(OrderDate, '+18 year')
+FROM 'Orders'
+WHERE Id = 10248
+```
+Step 4. Use CASE statement for replacing years:
+```{sql, connection = con}
+SELECT OrderDate, DATE(OrderDate, '+18 year') AS 'NewDate'
+FROM 'Orders'
+WHERE Id IN (10248, 10409, 10817)
+```
+Step 5. Modify **OrderTable** by inserting newOrderData column
+```{r}
+# Load test database
+test_con <- dbConnect(RSQLite::SQLite(), "db/test_Northwind.sqlite")
+dbListTables(test_con)
+```
+
+List of Orders table's column names:
+```{r}
+dbListFields(test_con, "Orders")
+```
+
+Overview **Orders** table:
+```{sql, connection = test_con}
+SELECT * FROM 'Orders'
+```
+What we want to insert:
+```{sql, connection = test_con}
+SELECT OrderDate, DATE(OrderDate, '+18 year') AS 'NewDate'
+FROM 'Orders'
+```
+Insert newOrderData column:
+```{sql, connection = test_con}
+INSERT INTO 'Orders'
+SELECT DATE(OrderDate, '+18 year') AS 'NewDate'
+FROM 'Orders'
+```
+NEXT STEPS:
+1) Як вставляти строки аргументів щоб вони виконувалися наче введені вручну (див. quotation!)
+2) Практика роботи з віртуальними таблицями. Як робити тестові вибірки з бази і оперувати ними як окремою базою/таблицею
+3) Перевести базу в PostgreSQL?
+
+Try to use UPDATE command:
+```{sql, connection = test_con}
+--UPDATE 'Orders' SET OrderDate = DATE(OrderDate, '+18 year')
+```
+It Works!!!
+```{sql, connection = test_con}
+SELECT * FROM 'Orders'
+```
+Group by year:
+```{sql, connection = test_con}
+SELECT strftime('%Y', OrderDate) AS 'Year', COUNT(*) AS '#OfYears'
+FROM 'Orders'
+GROUP BY strftime('%Y', OrderDate)
+```
+Next update RequiredDate and ShippedDate
+```{sql, connection = test_con}
+UPDATE 'Orders' SET RequiredDate = DATE(RequiredDate, '+18 year')
+```
+ShippedDate:
+```{sql, connection = test_con}
+UPDATE 'Orders' SET ShippedDate = DATE(ShippedDate, '+18 year')
+```
+Overview Orders table:
+```{sql, connection = test_con}
+SELECT * FROM 'Orders'
+```
+
+#```{sql, connection = con}
+SELECT OrderDate,
+  CASE
+  WHEN strftime('%Y', OrderDate) = '1996' THEN DATE(OrderDate, '+18 year') 
+  WHEN strftime('%Y', OrderDate) = '1997' THEN DATE(OrderDate, '+19 year') 
+  WHEN strftime('%Y', OrderDate) = '1998' THEN DATE(OrderDate, '+20 year')
+  END AS 'NewDate'
+FROM 'Orders'
+WHERE Id IN (10248, 10409, 10817)
+#```
