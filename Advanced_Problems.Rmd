@@ -1,6 +1,8 @@
 ---
 title: 'SQL Practice: Advanced problems'
 output: html_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -209,5 +211,603 @@ LEFT JOIN 'OrderDetail' ON OrderDetail.OrderId = Orders.Id
 GROUP BY OrderDetail.OrderId
 ORDER BY COUNT(OrderDetail.OrderId) DESC, Orders.Id DESC
 LIMIT 10
+```
+
+### Q37: Orders - random assortment  
+  
+The Northwind mobile app developers would now like to just get a random assortment of orders for beta testing on their app. Show a random set of 2% of all orders.
+  
+First, define number of rows in Orders table:
+```{sql}
+SELECT * FROM 'Orders'
+```
+There are 830 rows. It means 2% is 830*0.02 = 16.6
+Final decision: 
+```{sql}
+SELECT * FROM 'Orders' ORDER BY RANDOM() LIMIT(17)
+```
+
+### Q38: Orders - accidental double-entry  
+  
+Janet Leverling, one of the salespeople, has come to you with a request. She thinks that she accidentally double-entered a line item on an order, with a different ProductID, but the same quantity. She remembers that the quantity was 60 or more.  
+Task: Show all the OrderIDs with line items that match this, in order of OrderID.
+  
+First, look in OrderDetail table:
+```{sql}
+SELECT * FROM 'OrderDetail' 
+```
+Let's view how result should look like. Select Id = 10263:
+```{sql}
+SELECT * FROM 'OrderDetail' WHERE OrderId = 10263
+```
+
+Final answer:
+```{sql}
+SELECT OrderId
+FROM 'OrderDetail'
+WHERE Quantity >= 60
+GROUP BY OrderId, Quantity
+HAVING COUNT(Quantity) > 1
+```
+
+Let's explore previous answer:
+```{sql}
+SELECT *
+FROM 'OrderDetail'
+WHERE OrderId IN (10263, 10658, 10990, 11030) AND Quantity >= 60
+--GROUP BY OrderId, Quantity
+--HAVING COUNT(Quantity > 60) = 2  
+```
+
+### Q39: Orders - accidental double-entry details  
+  
+Based on the previous question, we now want to show details of the order, for orders that match the above criteria.
+```{sql}
+SELECT *
+FROM (SELECT OrderId AS 'BaseId'
+      FROM 'OrderDetail'
+      WHERE Quantity >= 60
+      GROUP BY OrderId, Quantity
+      HAVING COUNT(Quantity) > 1)
+JOIN 'OrderDetail' ON OrderId = BaseId
+```
+
+Next will use [Common Tabel Expression](https://www.essentialsql.com/introduction-common-table-expressions-ctes/) (CTE) with WITH operator:
+```{sql}
+WITH temp (BaseId) AS (
+  SELECT OrderId
+  FROM 'OrderDetail'
+  WHERE Quantity >= 60
+  GROUP BY OrderId, Quantity
+  HAVING COUNT(Quantity) > 1)
+SELECT *
+FROM 'temp'
+JOIN 'OrderDetail' ON OrderId = BaseId
+```
+More examples with CTE here:  
+1) [Общие табличные выражения (CTE)](http://www.sql-tutorial.ru/ru/book_common_table_expressions_cte.html)  
+2) [Introduction common table expressions](https://www.essentialsql.com/introduction-common-table-expressions-ctes)
+
+### Q41: Late orders  
+  
+Some customers are complaining about their orders arriving late. Which orders are late?  
+Overview OrderDetail table
+```{sql}
+SELECT * FROM 'Orders'
+```
+Decision:
+```{sql}
+SELECT Id, OrderDate, RequiredDate, ShippedDate
+FROM 'Orders'
+WHERE strftime('%Y-%m-%d', ShippedDate) > strftime('%Y-%m-%d', RequiredDate)
+```
+My improved version - order by differences in dates:
+```{sql}
+SELECT Id, OrderDate, RequiredDate, ShippedDate, julianday(ShippedDate) - julianday(RequiredDate) AS 'LagTime'
+FROM 'Orders'
+WHERE strftime('%Y-%m-%d', ShippedDate) > strftime('%Y-%m-%d', RequiredDate)
+ORDER BY julianday(ShippedDate) - julianday(RequiredDate) DESC
+```
+
+### Q42: Late orders - which employees?  
+  
+Some salespeople have more orders arriving late than others. Maybe they're not following up on the order process, and need more training. Which salespeople have the most orders arriving late?  
+  
+Customer's table:
+```{sql}
+SELECT * FROM 'Employee'
+```
+My decision:
+```{sql}
+WITH temp (OrderId, EmployeeId) AS (
+  SELECT Id, EmployeeId
+  FROM 'Orders'
+  WHERE strftime('%Y-%m-%d', ShippedDate) > strftime('%Y-%m-%d', RequiredDate)
+  )
+SELECT Id, LastName, COUNT(*) AS 'TotalLateOrders'
+FROM 'temp'
+JOIN 'Employee' ON EmployeeId = Id
+GROUP BY LastName
+ORDER BY COUNT(*) DESC
+```
+
+### Q43: Late orders vs. total orders  
+  
+Andrew, the VP of sales, has been doing some more thinking some more about the problem of late orders. He realizes that just looking at the number of orders arriving late for each salesperson isn't a good idea. It needs to be compared against the total number of orders per salesperson. Return results like the following:
+
+Here is the case when we have to use two CTEs within WITH statement.  
+  
+First statement - which salespeople have the most orders arriving late:
+```{sql}
+SELECT Id, EmployeeId, COUNT(*) AS 'LateOrders'
+FROM 'Orders'
+WHERE strftime('%Y-%m-%d', ShippedDate) > strftime('%Y-%m-%d', RequiredDate)
+GROUP BY EmployeeId
+```
+Second statement - find how many orders has each employee:
+```{sql}
+SELECT Id, EmployeeId, COUNT(*) AS 'TotalOrdersPerEmployee'
+FROM 'Orders'
+GROUP BY EmployeeId
+ORDER BY TotalOrdersPerEmployee DESC
+```
+Combine two statements:
+```{sql}
+WITH 'ArrivingLate' (EmployeeIdAL, LateOrders) AS (
+  -- First statement - which salespeople have the most orders arriving late:
+  SELECT EmployeeId, COUNT(*)
+  FROM 'Orders'
+  WHERE strftime('%Y-%m-%d', ShippedDate) > strftime('%Y-%m-%d', RequiredDate)
+  GROUP BY EmployeeId),
+  -- Second statement - find how many orders has each employee:
+  'TotalOrders' (EmployeeIdTO, TotalOrdersPerEmployee) AS (
+  SELECT EmployeeId, COUNT(*)
+  FROM 'Orders'
+  GROUP BY EmployeeId)
+-- Combine first and second tables in WITH
+SELECT Id, LastName, TotalOrdersPerEmployee, LateOrders
+FROM 'ArrivingLate'
+LEFT JOIN 'TotalOrders' ON TotalOrders.EmployeeIdTO = ArrivingLate.EmployeeIdAL
+JOIN 'Employee' ON Employee.Id = EmployeeIdAL
+ORDER BY TotalOrdersPerEmployee DESC
+```
+
+### Q46: Late orders vs. total orders - percentage
+  
+Now we want to get the percentage of late orders over total orders:
+```{sql}
+WITH 'ArrivingLate' (EmployeeIdAL, LateOrders) AS (
+  -- First statement - which salespeople have the most orders arriving late:
+  SELECT EmployeeId, COUNT(*)
+  FROM 'Orders'
+  WHERE strftime('%Y-%m-%d', ShippedDate) > strftime('%Y-%m-%d', RequiredDate)
+  GROUP BY EmployeeId),
+  -- Second statement - find how many orders has each employee:
+  'TotalOrders' (EmployeeIdTO, TotalOrdersPerEmployee) AS (
+  SELECT EmployeeId, COUNT(*)
+  FROM 'Orders'
+  GROUP BY EmployeeId)
+-- Combine first and second tables in WITH
+SELECT Id, LastName, TotalOrdersPerEmployee, LateOrders, round(LateOrders*1.0/TotalOrdersPerEmployee*100, 2)  AS 'LateOrders, %'
+FROM 'ArrivingLate'
+LEFT JOIN 'TotalOrders' ON TotalOrders.EmployeeIdTO = ArrivingLate.EmployeeIdAL
+JOIN 'Employee' ON Employee.Id = EmployeeIdAL
+ORDER BY `LateOrders, %` DESC
+```
+
+### Q48: Customer grouping  
+  
+Andrew Fuller, the VP of sales at Northwind, would like to do a sales campaign for existing customers. He'd like to categorize customers into groups, based on how much they ordered in 2016. Then, depending on which group the customer is in, he will target the customer with different sales materials.  
+  
+The customer grouping categories are 0 to 1,000, 1,000 to 5,000, 5,000 to 10,000, and over 10,000.  
+  
+A good starting point for this query is the answer from the problem "High-value customers - total orders". We don’t want to show customers who don’t have any orders in 2016.  
+  
+Order the results by CustomerID.  
+  
+Final answer with tidyverse
+```{r}
+inner_join(select(small_order_details, 1:5),
+           select(small_orders, Id, CustomerId, OrderDate) %>% filter(year(OrderDate) == 2016),
+           by = c("OrderId" = "Id")) %>% 
+  inner_join(select(small_customer, Id, CompanyName), by = c("CustomerId" = "Id")) %>% 
+  group_by(CustomerId) %>% 
+  summarise(TotalValue = sum(UnitPrice * Quantity),
+            CustomerGroup = case_when(TotalValue <= 1000 ~ "Low",
+                                      between(TotalValue, 1001, 5000) ~ "Medium",
+                                      between(TotalValue, 5001, 10000) ~ "High",
+                                      TotalValue > 10000 ~ "Very High"))
+```
+Test CASE_WHEN (dplyr):
+```{r}
+a <- 1:50
+case_when(
+  a < 10 ~ "Low",
+  between(a, 10, 40) ~ "Medium",
+  a > 40 ~ "High")
+```
+
+Step 1. Show orders by year:
+```{sql}
+SELECT strftime('%Y', Orders.OrderDate) AS 'Year', COUNT(*) AS '#OfYears'
+FROM 'Orders'
+GROUP BY strftime('%Y', Orders.OrderDate)
+```
+Step 2. Final answer
+```{sql}
+SELECT Orders.CustomerId, Customer.CompanyName, SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalOrderAmount',
+CASE 
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) <= 1000 THEN 'Low'
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) BETWEEN 1001 AND 5000 THEN 'Medium'
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) BETWEEN 5001 AND 10000 THEN 'High'
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 10000 THEN 'VeryHigh'
+END AS 'CustomerGroup'
+FROM 'OrderDetail'
+JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE strftime('%Y', Orders.OrderDate) = '2016'
+GROUP BY CustomerId
+```
+
+### Q49: Customer grouping - fix null  
+  
+There's a bug with the answer for the previous question. The CustomerGroup value for one of the rows is null.  
+  
+Fix the SQL so that there are no nulls in the CustomerGroup field.
+```{sql}
+SELECT Orders.CustomerId, Customer.CompanyName, SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalOrderAmount',
+CASE 
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) <= 1000 THEN 'Low'
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 1000 AND SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) <= 5000 THEN 'Medium'
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 5000 AND SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) <= 10000 THEN 'High'
+WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 10000 THEN 'VeryHigh'
+END AS 'CustomerGroup'
+FROM 'OrderDetail'
+JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE strftime('%Y', Orders.OrderDate) = '2016'
+GROUP BY CustomerId
+```
+
+### Q50: Customer grouping with percentage  
+  
+Based on the above query, show all the defined CustomerGroups, and the percentage in each. Sort by the total in each group, in descending order.
+
+FIRST VARIANT
+```{sql}
+WITH 'CustomerGroup' (TotalOrderAmount, CustomerGroup) AS (
+  -- execute query for groupping customer from previous task
+  SELECT SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalOrderAmount',
+  CASE 
+  WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) <= 1000 THEN 'Low'
+  WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 1000 AND SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) <= 5000 THEN 'Medium'
+  WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 5000 AND SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) <= 10000 THEN 'High'
+  WHEN SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) > 10000 THEN 'VeryHigh'
+  END AS 'CustomerGroup'
+  FROM 'OrderDetail'
+  JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+  JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+  WHERE strftime('%Y', Orders.OrderDate) = '2016'
+  GROUP BY CustomerId),
+  -- count number of each CustomerGroup
+  'TotalInGroup' (CustomerGroup, TotalInGroup) AS (
+  SELECT  CustomerGroup, COUNT(*) 
+  FROM 'CustomerGroup'
+  GROUP BY CustomerGroup),
+  -- count total number of CustomerGroup
+  'TotalGroup' (TotalGroup) AS (
+  SELECT SUM(TotalInGroup) 
+  FROM 'TotalInGroup')
+-- combine results from TotalInGroup and TotalGroup
+SELECT CustomerGroup, TotalInGroup, round(TotalInGroup*1.0/TotalGroup*100, 1) AS 'PercentageInGroup'
+FROM 'TotalInGroup', 'TotalGroup'
+ORDER BY TotalInGroup DESC
+```
+
+SECOND VARIANT. Repeat the same task but use book help. Use VIEWs for helping.  
+  
+Subquery 1: select CustomerId, CompanyName and TotalOrderAmount for year 2016 filter 
+```{sql}
+CREATE TEMP VIEW IF NOT EXISTS 'SQ1_Order2016' AS
+SELECT Orders.CustomerId, Customer.CompanyName, SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalOrderAmount'
+FROM 'OrderDetail'
+JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+WHERE strftime('%Y', Orders.OrderDate) = '2016'
+GROUP BY CustomerId
+```
+Query SQ1_Order2016:
+```{sql}
+--DROP VIEW IF EXISTS 'Order2016'
+SELECT * FROM 'SQ1_Order2016'
+```
+Subquery 2: divide customers by group depending on their TotalOrderAmount:
+```{sql}
+CREATE TEMP VIEW IF NOT EXISTS 'SQ2_GroupedCustomers' AS
+SELECT *, CASE 
+  WHEN TotalOrderAmount <= 1000 THEN 'Low'
+  WHEN TotalOrderAmount > 1000 AND TotalOrderAmount <= 5000 THEN 'Medium'
+  WHEN TotalOrderAmount > 5000 AND TotalOrderAmount <= 10000 THEN 'High'
+  WHEN TotalOrderAmount > 10000 THEN 'VeryHigh'
+  END AS 'CustomerGroup'
+FROM 'SQ1_Order2016'
+```
+Query SQ2_GroupedCustomers:
+```{sql}
+SELECT * FROM 'SQ2_GroupedCustomers'
+```
+Final query 3: count number of each CustomerGroup
+```{sql}
+SELECT CustomerGroup, COUNT(*) AS 'TotalInGroup',
+  round(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM 'SQ2_GroupedCustomers'), 1) AS 'PercentTotalInGroup'
+FROM 'SQ2_GroupedCustomers'
+GROUP BY CustomerGroup
+ORDER BY PercentTotalInGroup DESC
+```
+Now, combine all subqueries in big one:
+```{sql}
+WITH 'Order2016' AS (
+  SELECT Orders.CustomerId, Customer.CompanyName, SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalOrderAmount'
+  FROM 'OrderDetail'
+  JOIN 'Orders' ON OrderDetail.OrderId = Orders.Id 
+  JOIN 'Customer' ON Customer.Id = Orders.CustomerId
+  WHERE strftime('%Y', Orders.OrderDate) = '2016'
+  GROUP BY CustomerId
+  ),
+ 'CustomerGroup' AS (
+  SELECT *, CASE 
+    WHEN TotalOrderAmount <= 1000 THEN 'Low'
+    WHEN TotalOrderAmount > 1000 AND TotalOrderAmount <= 5000 THEN 'Medium'
+    WHEN TotalOrderAmount > 5000 AND TotalOrderAmount <= 10000 THEN 'High'
+    WHEN TotalOrderAmount > 10000 THEN 'VeryHigh'
+    END AS 'CustomerGroup'
+  FROM 'Order2016')
+SELECT CustomerGroup, COUNT(*) AS 'TotalInGroup',
+  round(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM 'CustomerGroup'), 1) AS 'PercentTotalInGroup'
+FROM 'CustomerGroup'
+GROUP BY CustomerGroup
+ORDER BY PercentTotalInGroup DESC
+```
+
+### Q51: Customer grouping - flexible
+
+Andrew, the VP of Sales is still thinking about how best to group customers, and define low, medium, high, and very high value
+customers. He now wants complete flexibility in grouping the customers, based on the dollar amount they've ordered. He doesn’t want
+to have to edit SQL in order to change the boundaries of the customer groups.  
+  
+How would you write the SQL?  
+  
+There's a table called CustomerGroupThreshold that you will need to use. Use only orders from 2016.  
+ 
+Step 1. Create temporary table CustomerGroupThreshold
+```{sql}
+--CREATE TEMP TABLE 'CustomerGroupThreshold' AS
+--SELECT Orders.CustomerId, Customer.CompanyName, SUM(OrderDetail.UnitPrice*OrderDetail.Quantity) AS 'TotalOrderAmount',
+--SELECT CASE 
+--  WHEN TotalOrderAmount <= 1000 THEN 'Low'
+--  WHEN TotalOrderAmount > 1000 AND TotalOrderAmount <= 5000 THEN 'Medium'
+--  WHEN TotalOrderAmount > 5000 AND TotalOrderAmount <= 10000 THEN 'High'
+--  WHEN TotalOrderAmount > 10000 THEN 'VeryHigh'
+--END AS 'CustomerGroup'
+```
+```{sql}
+--DROP TABLE 'CustomerGroupThreshold'
+```
+
+
+Check our table:
+```{sql}
+--SELECT * FROM 'CustomerGroupThreshold'
+```
+### Q52: Countries with suppliers or customers  
+  
+Some Northwind employees are planning a business trip, and would like to visit as many suppliers and customers as possible. For their planning, they’d like to see a list of all countries where suppliers and/or customers are based.  
+  
+Step 1. Find all countries where customers are based
+```{sql}
+SELECT DISTINCT Country
+FROM 'Customer'
+ORDER BY Country 
+```
+
+Step 2. Find all countries where suppliers are based
+```{sql}
+SELECT DISTINCT Country
+FROM 'Supplier'
+ORDER BY Country 
+```
+
+Step 3. Create final query
+```{sql}
+SELECT DISTINCT Country
+FROM 'Customer'
+UNION
+SELECT DISTINCT Country
+FROM 'Supplier'
+ORDER BY Country 
+```
+
+### Q53: Countries with suppliers or customers, version 2
+  
+The employees going on the business trip don’t want just a raw list of countries, they want more details. We’d like to see output like the below, in the Expected Results (p.201).  
+  
+Sqllite does not have FULL OUTER JOIN. What can we do?
+```{sql}
+CREATE TEMP VIEW IF NOT EXISTS 'Countries' AS 
+WITH 'Countries' (Countries) AS (
+SELECT DISTINCT Country AS 'Countries'
+FROM 'Customer'
+UNION
+SELECT DISTINCT Country AS 'Countries'
+FROM 'Supplier'
+ORDER BY Countries
+),
+'Customers' (CustomerCountry) AS (
+SELECT DISTINCT Country 
+FROM 'Customer'
+),
+'Suppliers' (SupplierCountry) AS (
+SELECT DISTINCT Country
+FROM 'Supplier'
+)
+SELECT *
+FROM 'Countries'
+LEFT OUTER JOIN 'Customers' ON Countries.Countries = Customers.CustomerCountry
+LEFT OUTER JOIN 'Suppliers' ON Countries.Countries = Suppliers.SupplierCountry
+```
+Look into view Countries:
+```{sql}
+SELECT SupplierCountry, CustomerCountry FROM 'Countries'
+--DROP VIEW 'Countries'
+```
+
+### Q54: Countries with suppliers or customers - version 3
+  
+The output of the above is improved, but it’s still not ideal What we’d really like to see is the country name, the total suppliers, and the total customers.  
+  
+Step 1. Group by country for Customer table
+```{sql}
+SELECT Country, COUNT(*)
+FROM 'Customer'
+GROUP BY Country
+ORDER BY Country
+```
+Step 2. Subquery for Customer table
+```{sql}
+SELECT Countries, COUNT(Customer.Country) AS 'TotalCustomers'
+FROM 'Countries'
+LEFT OUTER JOIN 'Customer' ON Countries.Countries = Customer.Country
+GROUP BY Countries.Countries
+```
+Final answer:
+```{sql}
+WITH 'Customers' (CustCountry, TotalCustomers) AS (
+  SELECT Countries, COUNT(Customer.Country)
+  FROM 'Countries'
+  LEFT OUTER JOIN 'Customer' ON Countries.Countries = Customer.Country
+  GROUP BY Countries.Countries
+  ),
+  'Suppliers' (SuppCountry, TotalSuppliers) AS (
+  SELECT Countries, COUNT(Supplier.Country)
+  FROM 'Countries'
+  LEFT OUTER JOIN 'Supplier' ON Countries.Countries = Supplier.Country
+  GROUP BY Countries.Countries)
+SELECT CustCountry, TotalCustomers, TotalSuppliers
+FROM 'Customers'
+INNER JOIN 'Suppliers' ON Customers.CustCountry = Suppliers.SuppCountry
+```
+
+### Q55: First order in each country
+  
+Looking at the Orders table—we’d like to show details for each order that was the first in that particular country, ordered by OrderID. So, we need one row per ShipCountry, and CustomerID, OrderID, and OrderDate should be of the first order from that country.  
+  
+1) Explore Orders table
+```{sql}
+SELECT Id, CustomerId, OrderDate, ShipCountry
+FROM 'Orders'
+```
+2) Find answer for one country
+```{sql}
+SELECT ShipCountry, OrderDate, Id, CustomerId
+FROM 'Orders'
+WHERE ShipCountry = 'Argentina'
+```
+3) Find answer for one country and min date
+```{sql}
+SELECT ShipCountry, MIN(OrderDate), Id, CustomerId
+FROM 'Orders'
+WHERE ShipCountry = 'Austria'--'Argentina'
+```
+4) Let's get final answer by using SELF JOIN and MIN
+```{sql}
+SELECT x.ShipCountry, y.CustomerId, y.Id, MIN(y.OrderDate) AS 'OrderDate'
+FROM 'Orders' x, 'Orders' y
+WHERE x.ShipCountry = y.ShipCountry
+GROUP BY x.ShipCountry
+```
+5) How to use WINDOW function?
+
+### Q56: Customers with multiple orders in 5 day period
+  
+There are some customers for whom freight is a major expense when ordering from Northwind.  
+However, by batching up their orders, and making one larger order instead of multiple smaller orders in a short period of time, they could reduce their freight costs significantly.  
+Show those customers who have made more than 1 order in a 5 day period. The sales people will use this to help customers reduce their costs.  
+  
+Note: There are more than one way of solving this kind of problem. For this problem, we will not be using Window functions.  
+  
+1) Look into Orders table
+```{sql}
+SELECT CustomerId, Id, OrderDate
+FROM 'Orders'
+ORDER BY CustomerId, OrderDate
+```
+2) Find customer with the most orders
+```{sql}
+SELECT CustomerId, COUNT(Id)
+FROM 'Orders'
+GROUP BY CustomerId
+ORDER BY COUNT(Id) DESC
+```
+3) Show order Ids and dates for SAVEA 
+```{sql}
+SELECT Id, OrderDate
+FROM 'Orders'
+WHERE CustomerId == 'SAVEA'
+```
+4) Show OrderDate without first row 
+```{sql}
+SELECT Id, OrderDate
+FROM 'Orders'
+WHERE CustomerId == 'SAVEA'
+LIMIT -1 OFFSET 1
+```
+
+5) Find differences in date for SAVEA 
+```{sql}
+SELECT
+  InitialOrder.CustomerId,
+  InitialOrder.Id AS 'InitialOrderId',
+  InitialOrder.OrderDate AS 'InitialOrderDate',
+  NextOrder.Id AS 'NextOrderId',
+  NextOrder.OrderDate AS 'NextOrderDate' --julianday(NextOrderDate - InitialOrderDate) AS 'DaysBetween'
+FROM 'Orders' InitialOrder
+JOIN 'Orders' NextOrder ON InitialOrder.CustomerId = NextOrder.CustomerId
+WHERE NextOrder.OrderDate > InitialOrder.OrderDate
+--GROUP BY InitialOrder.CustomerId, InitialOrder.Id
+--HAVING NextOrder.OrderDate > InitialOrder.OrderDate
+--LIMIT 1
+ORDER BY InitialOrder.CustomerId, InitialOrder.Id
+```
+2) Filtering data for one customer groupping by InitialOrderId
+```{sql}
+SELECT
+  InitialOrder.CustomerId,
+  InitialOrder.Id AS 'InitialOrderId',
+  InitialOrder.OrderDate AS 'InitialOrderDate',
+  NextOrder.Id AS 'NextOrderId',
+  NextOrder.OrderDate AS 'NextOrderDate',
+  julianday(DATE(NextOrder.OrderDate)) - julianday(DATE(InitialOrder.OrderDate)) AS 'DaysBetween'
+FROM 'Orders' InitialOrder
+JOIN 'Orders' NextOrder ON InitialOrder.CustomerId = NextOrder.CustomerId
+WHERE InitialOrder.CustomerId = 'ALFKI' AND InitialOrder.OrderDate < NextOrder.OrderDate 
+GROUP BY InitialOrder.CustomerId, InitialOrder.Id
+HAVING MIN(InitialOrder.OrderDate < NextOrder.OrderDate)
+ORDER BY InitialOrder.CustomerId, InitialOrder.Id
+```
+3) Final answer: 
+```{sql}
+SELECT
+  InitialOrder.CustomerId,
+  InitialOrder.Id AS 'InitialOrderId',
+  InitialOrder.OrderDate AS 'InitialOrderDate',
+  NextOrder.Id AS 'NextOrderId',
+  NextOrder.OrderDate AS 'NextOrderDate',
+  julianday(DATE(NextOrder.OrderDate)) - julianday(DATE(InitialOrder.OrderDate)) AS 'DaysBetween'
+FROM 'Orders' InitialOrder
+JOIN 'Orders' NextOrder ON InitialOrder.CustomerId = NextOrder.CustomerId
+WHERE InitialOrder.OrderDate < NextOrder.OrderDate AND DaysBetween < 6
+GROUP BY InitialOrder.CustomerId, InitialOrder.Id
+HAVING MIN(NextOrder.OrderDate > InitialOrder.OrderDate)
+ORDER BY InitialOrder.CustomerId, InitialOrder.Id
 ```
 
